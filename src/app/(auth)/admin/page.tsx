@@ -1,419 +1,404 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { 
-  Users, Settings, BarChart3, Package, TrendingUp, 
-  CheckCircle, Plus, Search, Filter, Eye, Edit2, 
-  Trash2, UserPlus, Shield, Activity, LogOut
-} from 'lucide-react';
-import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
-import { signOut } from '@/lib/firebase/auth';
+import { LogOut, TrendingUp, Package, Factory, Users, Download, Trash2, BarChart3 } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDepartment, setSelectedDepartment] = useState('all');
-  const [employees, setEmployees] = useState<any[]>([]);
+  const [user, setUser] = useState('');
   const [tasks, setTasks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const router = useRouter();
 
-  // Real-time Firebase data
   useEffect(() => {
-    setLoading(true);
-
-    // Listen to employees collection
-    const employeesUnsubscribe = onSnapshot(
-      collection(db, 'employees'),
-      (snapshot) => {
-        const employeesData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setEmployees(employeesData);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Error loading employees:', error);
-        setLoading(false);
-      }
-    );
-
-    // Listen to tasks collection
-    const tasksUnsubscribe = onSnapshot(
-      collection(db, 'tasks'),
-      (snapshot) => {
-        const tasksData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setTasks(tasksData);
-      },
-      (error) => {
-        console.error('Error loading tasks:', error);
-      }
-    );
-
-    // Cleanup subscriptions
-    return () => {
-      employeesUnsubscribe();
-      tasksUnsubscribe();
-    };
-  }, []);
-
-  // Calculate real-time stats
-  const systemStats = {
-    totalUsers: employees.length,
-    activeUsers: employees.filter(e => e.status === 'active').length,
-    todayLogins: employees.filter(e => {
-      const lastActive = new Date(e.lastActive || 0);
-      const today = new Date();
-      return lastActive.toDateString() === today.toDateString();
-    }).length,
-    newThisMonth: employees.filter(e => {
-      const joinDate = new Date(e.createdAt || e.joinDate);
-      const now = new Date();
-      return joinDate.getMonth() === now.getMonth() && 
-             joinDate.getFullYear() === now.getFullYear();
-    }).length,
-    totalTasks: tasks.length,
-    completedTasks: tasks.filter(t => t.status === 'Completed').length,
-  };
-
-  // Department options
-  const departments = ['all', 'Production', 'Sales', 'Quality Control', 'Design', 'Purchase', 'Store', 'Dispatch', 'Human Resources', 'IT'];
-
-  // Filter employees
-  const filteredEmployees = employees.filter(emp => {
-    const matchesSearch = 
-      (emp.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (emp.email?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-      (emp.designation?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+    const currentUser = localStorage.getItem('currentUser');
+    if (!currentUser) {
+      router.push('/login');
+    } else {
+      setUser(currentUser);
+      loadTasks();
+    }
     
-    const matchesDepartment = selectedDepartment === 'all' || emp.department === selectedDepartment;
-    
-    return matchesSearch && matchesDepartment;
-  });
+    // Auto-refresh every 5 seconds to sync with supervisor
+    const interval = setInterval(loadTasks, 5000);
+    return () => clearInterval(interval);
+  }, [router]);
 
-  const tabs = [
-    { id: 'overview', name: 'System Overview', icon: BarChart3 },
-    { id: 'users', name: 'User Management', icon: Users },
-    { id: 'settings', name: 'System Settings', icon: Settings },
-  ];
-
-  // Logout handler
-  const handleLogout = async () => {
-    if (confirm('Are you sure you want to logout?')) {
-      await signOut();
+  const loadTasks = () => {
+    const savedTasks = localStorage.getItem('productionTasks');
+    if (savedTasks) {
+      setTasks(JSON.parse(savedTasks));
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('currentUser');
+    router.push('/login');
+  };
+
+  const handleDeleteTask = (taskId: number) => {
+    const updatedTasks = tasks.filter(t => t.id !== taskId);
+    setTasks(updatedTasks);
+    localStorage.setItem('productionTasks', JSON.stringify(updatedTasks));
+  };
+
+  const exportToExcel = () => {
+    const csv = [
+      ['Project ID', 'Part Type', 'Part Name', 'Process', 'Quantity', 'TEI %', 'Operator', 'Machine', 'Date', 'Time'],
+      ...tasks.map(t => [
+        t.projectId,
+        t.partType,
+        t.partName,
+        t.manufacturingProcess,
+        t.quantity,
+        t.tei,
+        t.operatorName,
+        t.machineId,
+        t.date,
+        t.time
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `production-report-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  };
+
+  // Calculate statistics
+  const avgTEI = tasks.length > 0 ? (tasks.reduce((s, t) => s + t.tei, 0) / tasks.length).toFixed(1) : '0.0';
+  const totalUnits = tasks.reduce((s, t) => s + (t.quantity || 0), 0);
+  const totalTasks = tasks.length;
+
+  // Prepare chart data
+  const teiTrendData = tasks.slice(0, 10).reverse().map((t, i) => ({
+    name: `Task ${i + 1}`,
+    TEI: t.tei,
+    date: t.date
+  }));
+
+  const partTypeData = tasks.reduce((acc: any[], task) => {
+    const existing = acc.find(item => item.name === task.partType);
+    if (existing) {
+      existing.value += 1;
+    } else {
+      acc.push({ name: task.partType, value: 1 });
+    }
+    return acc;
+  }, []);
+
+  const processData = tasks.reduce((acc: any[], task) => {
+    const existing = acc.find(item => item.name === task.manufacturingProcess);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      acc.push({ name: task.manufacturingProcess, count: 1 });
+    }
+    return acc;
+  }, []);
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6'];
+
+  const filteredTasks = tasks.filter(task =>
+    task.projectId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    task.partType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    task.partName.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header with Logout */}
-      <div className="bg-slate-800/50 border-b border-slate-700 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                <Shield className="w-7 h-7" />
-                System Administrator
-              </h1>
-              <p className="text-slate-400 text-sm mt-1">
-                Triovision Composite ERP - Admin Control Panel
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 px-4 py-2 bg-green-500/20 border border-green-500/30 rounded-lg">
-                <Activity className="w-5 h-5 text-green-400 animate-pulse" />
-                <span className="text-green-400 font-semibold text-sm">System Online</span>
-              </div>
-              <div className="text-right">
-                <p className="text-slate-400 text-sm">Logged in as:</p>
-                <p className="text-white font-semibold">admin@triovisioninternational.com</p>
-              </div>
-              <button 
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-all"
-              >
-                <LogOut className="w-5 h-5" />
-                Logout
-              </button>
-            </div>
-          </div>
+    <div className="relative min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 overflow-hidden">
+      {/* Animated Background */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:4rem_4rem]"></div>
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
 
-          {/* Tabs */}
-          <div className="flex gap-2 mt-6">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
+      <div className="relative z-10">
+        {/* Header */}
+        <motion.header
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="border-b border-white/10 bg-white/5 backdrop-blur-xl"
+        >
+          <div className="max-w-7xl mx-auto px-6 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+                  <BarChart3 className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-white tracking-tight">Admin Dashboard</h1>
+                  <p className="text-zinc-400 text-sm mt-1">Production Analytics & Reporting</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className="text-xs text-zinc-400">Logged in as</p>
+                  <p className="text-sm font-semibold text-blue-300">{user}</p>
+                </div>
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
-                    activeTab === tab.id
-                      ? 'bg-blue-600 text-white shadow-lg'
-                      : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700'
-                  }`}
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-300 rounded-lg transition-all duration-300 font-medium"
                 >
-                  <Icon className="w-5 h-5" />
-                  {tab.name}
+                  <LogOut className="w-4 h-4" />
+                  Logout
                 </button>
-              );
-            })}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </motion.header>
 
-      {/* Loading State */}
-      {loading ? (
-        <div className="max-w-7xl mx-auto px-6 py-20 text-center">
-          <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
-          <p className="text-slate-400 mt-4">Loading data from Firebase...</p>
-        </div>
-      ) : (
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          
-          {/* TAB 1: System Overview */}
-          {activeTab === 'overview' && (
-            <div className="space-y-8">
-              {/* Real-time KPI Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-6 text-white shadow-xl"
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <Users className="w-10 h-10 text-blue-200 opacity-50" />
-                  </div>
-                  <h3 className="text-4xl font-bold">{systemStats.totalUsers}</h3>
-                  <p className="text-blue-100 text-sm mt-1">Total Users</p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                    <span className="text-blue-100 text-xs">{systemStats.activeUsers} active</span>
-                  </div>
-                </motion.div>
-
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  className="bg-gradient-to-br from-green-600 to-green-700 rounded-xl p-6 text-white shadow-xl"
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <Package className="w-10 h-10 text-green-200 opacity-50" />
-                  </div>
-                  <h3 className="text-4xl font-bold">{systemStats.totalTasks}</h3>
-                  <p className="text-green-100 text-sm mt-1">Total Tasks</p>
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="text-green-100 text-xs">{systemStats.completedTasks} completed</span>
-                  </div>
-                </motion.div>
-
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-6 text-white shadow-xl"
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <TrendingUp className="w-10 h-10 text-purple-200 opacity-50" />
-                  </div>
-                  <h3 className="text-4xl font-bold">
-                    {tasks.length > 0 ? ((systemStats.completedTasks / tasks.length) * 100).toFixed(1) : 0}%
-                  </h3>
-                  <p className="text-purple-100 text-sm mt-1">Completion Rate</p>
-                </motion.div>
-
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="bg-gradient-to-br from-orange-600 to-orange-700 rounded-xl p-6 text-white shadow-xl"
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <UserPlus className="w-10 h-10 text-orange-200 opacity-50" />
-                  </div>
-                  <h3 className="text-4xl font-bold">{systemStats.newThisMonth}</h3>
-                  <p className="text-orange-100 text-sm mt-1">New Users This Month</p>
-                </motion.div>
-              </div>
-
-              {/* Live Tasks Feed */}
-              <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                  <Activity className="w-6 h-6" />
-                  Recent Tasks (Live)
-                </h3>
-                <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                  {tasks.slice(0, 10).map((task, index) => (
-                    <div key={task.id} className="flex items-start gap-3 p-4 bg-slate-700/30 rounded-lg hover:bg-slate-700/50 transition-colors">
-                      <Package className="w-5 h-5 text-blue-400 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-white text-sm">
-                          <span className="font-semibold">{task.supervisorName || 'Supervisor'}</span> - {task.partName}
-                        </p>
-                        <p className="text-slate-400 text-xs mt-1">
-                          {task.quantity} units • TEI: {task.tei}% • {new Date(task.timestamp || task.createdAt?.toDate()).toLocaleString()}
-                        </p>
-                      </div>
-                      <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                        task.status === 'Completed' ? 'bg-green-500/20 text-green-400' : 
-                        'bg-yellow-500/20 text-yellow-400'
-                      }`}>
-                        {task.status}
-                      </span>
-                    </div>
-                  ))}
-                  {tasks.length === 0 && (
-                    <p className="text-slate-400 text-center py-8">No tasks recorded yet</p>
-                  )}
+        {/* Main Content */}
+        <main className="max-w-7xl mx-auto px-6 py-8">
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center border border-blue-500/30">
+                  <Package className="w-6 h-6 text-blue-300" />
                 </div>
+                <span className="text-xs font-medium text-blue-300 uppercase">Total</span>
               </div>
-            </div>
-          )}
+              <h3 className="text-4xl font-bold text-white">{totalTasks}</h3>
+              <p className="text-sm text-zinc-400 mt-2">Production Tasks</p>
+            </motion.div>
 
-          {/* TAB 2: User Management - Using Real Firebase Data */}
-          {activeTab === 'users' && (
-            <div className="space-y-6">
-              {/* Controls */}
-              <div className="flex justify-between items-center">
-                <div className="flex gap-3">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
-                    <input
-                      type="text"
-                      placeholder="Search users..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="bg-slate-700 text-white pl-10 pr-4 py-2.5 rounded-lg border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 w-80"
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center border border-green-500/30">
+                  <TrendingUp className="w-6 h-6 text-green-300" />
+                </div>
+                <span className="text-xs font-medium text-green-300 uppercase">Average</span>
+              </div>
+              <h3 className="text-4xl font-bold text-white">{avgTEI}%</h3>
+              <p className="text-sm text-zinc-400 mt-2">Task Efficiency</p>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center border border-purple-500/30">
+                  <Factory className="w-6 h-6 text-purple-300" />
+                </div>
+                <span className="text-xs font-medium text-purple-300 uppercase">Total</span>
+              </div>
+              <h3 className="text-4xl font-bold text-white">{totalUnits}</h3>
+              <p className="text-sm text-zinc-400 mt-2">Units Produced</p>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center border border-yellow-500/30">
+                  <Users className="w-6 h-6 text-yellow-300" />
+                </div>
+                <span className="text-xs font-medium text-yellow-300 uppercase">Active</span>
+              </div>
+              <h3 className="text-4xl font-bold text-white">{new Set(tasks.map(t => t.operatorName)).size}</h3>
+              <p className="text-sm text-zinc-400 mt-2">Operators</p>
+            </motion.div>
+          </div>
+
+          {/* Charts Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            {/* TEI Trend Chart */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl"
+            >
+              <h2 className="text-xl font-bold text-white mb-6">TEI Trend (Last 10 Tasks)</h2>
+              {teiTrendData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={teiTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
+                    <XAxis dataKey="name" stroke="#a1a1aa" />
+                    <YAxis stroke="#a1a1aa" />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
+                      labelStyle={{ color: '#e4e4e7' }}
                     />
-                  </div>
-                  <select
-                    value={selectedDepartment}
-                    onChange={(e) => setSelectedDepartment(e.target.value)}
-                    className="bg-slate-700 text-white px-4 py-2.5 rounded-lg border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {departments.map(dept => (
-                      <option key={dept} value={dept}>
-                        {dept === 'all' ? 'All Departments' : dept}
-                      </option>
-                    ))}
-                  </select>
+                    <Legend />
+                    <Line type="monotone" dataKey="TEI" stroke="#3b82f6" strokeWidth={3} dot={{ fill: '#3b82f6', r: 5 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[250px] flex items-center justify-center text-zinc-500">
+                  No data available
                 </div>
-                <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition-colors">
-                  <UserPlus className="w-5 h-5" />
-                  Add New User
+              )}
+            </motion.div>
+
+            {/* Part Type Distribution */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl"
+            >
+              <h2 className="text-xl font-bold text-white mb-6">Part Type Distribution</h2>
+              {partTypeData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={partTypeData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {partTypeData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[250px] flex items-center justify-center text-zinc-500">
+                  No data available
+                </div>
+              )}
+            </motion.div>
+
+            {/* Process Distribution */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl lg:col-span-2"
+            >
+              <h2 className="text-xl font-bold text-white mb-6">Manufacturing Process Distribution</h2>
+              {processData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={processData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
+                    <XAxis dataKey="name" stroke="#a1a1aa" angle={-15} textAnchor="end" height={100} />
+                    <YAxis stroke="#a1a1aa" />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px' }}
+                      labelStyle={{ color: '#e4e4e7' }}
+                    />
+                    <Legend />
+                    <Bar dataKey="count" fill="#10b981" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[250px] flex items-center justify-center text-zinc-500">
+                  No data available
+                </div>
+              )}
+            </motion.div>
+          </div>
+
+          {/* Data Table */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-white">All Production Tasks</h2>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  placeholder="Search tasks..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="px-4 py-2 bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 rounded-lg focus:bg-white/10 focus:border-blue-500/50 outline-none"
+                />
+                <button
+                  onClick={exportToExcel}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all font-medium"
+                >
+                  <Download className="w-4 h-4" />
+                  Export CSV
                 </button>
               </div>
-
-              {/* User Stats */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
-                  <p className="text-slate-400 text-sm">Total Users</p>
-                  <p className="text-3xl font-bold text-white mt-1">{employees.length}</p>
-                </div>
-                <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
-                  <p className="text-slate-400 text-sm">Active</p>
-                  <p className="text-3xl font-bold text-green-400 mt-1">
-                    {employees.filter(e => e.status === 'active').length}
-                  </p>
-                </div>
-                <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
-                  <p className="text-slate-400 text-sm">Inactive</p>
-                  <p className="text-3xl font-bold text-red-400 mt-1">
-                    {employees.filter(e => e.status === 'inactive').length}
-                  </p>
-                </div>
-                <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
-                  <p className="text-slate-400 text-sm">Filtered Results</p>
-                  <p className="text-3xl font-bold text-blue-400 mt-1">{filteredEmployees.length}</p>
-                </div>
-              </div>
-
-              {/* Users Table - Real Firebase Data */}
-              <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-slate-700/50">
-                      <tr>
-                        <th className="text-left px-6 py-4 text-slate-300 font-semibold text-sm">User</th>
-                        <th className="text-left px-6 py-4 text-slate-300 font-semibold text-sm">Role</th>
-                        <th className="text-left px-6 py-4 text-slate-300 font-semibold text-sm">Department</th>
-                        <th className="text-left px-6 py-4 text-slate-300 font-semibold text-sm">Status</th>
-                        <th className="text-left px-6 py-4 text-slate-300 font-semibold text-sm">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredEmployees.map((emp) => (
-                        <motion.tr 
-                          key={emp.id}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="border-t border-slate-700 hover:bg-slate-700/30 transition-colors"
-                        >
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold">
-                                {(emp.name || emp.email || 'U').substring(0, 2).toUpperCase()}
-                              </div>
-                              <div>
-                                <p className="text-white font-medium">{emp.name || 'No Name'}</p>
-                                <p className="text-slate-400 text-sm">{emp.email}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-semibold">
-                              {emp.role}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-slate-300">{emp.department || 'N/A'}</td>
-                          <td className="px-6 py-4">
-                            <span className={`px-3 py-1 rounded-lg text-sm font-semibold ${
-                              emp.status === 'active' 
-                                ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                                : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                            }`}>
-                              {emp.status || 'active'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex gap-2">
-                              <button className="p-2 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors">
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <button className="p-2 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors">
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </motion.tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {filteredEmployees.length === 0 && (
-                    <div className="text-center py-12">
-                      <Users className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-                      <p className="text-slate-400">No users found</p>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
-          )}
 
-          {/* TAB 3: Settings (unchanged) */}
-          {activeTab === 'settings' && (
-            <div className="text-white">Settings tab content...</div>
-          )}
-        </div>
-      )}
+            {filteredTasks.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/10">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Project ID</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Part Type</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Part Name</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Process</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Qty</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">TEI %</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Operator</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Date</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-300">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTasks.map((task) => (
+                      <tr key={task.id} className="border-b border-white/5 hover:bg-white/5 transition-all">
+                        <td className="py-3 px-4 text-sm text-blue-300 font-medium">{task.projectId}</td>
+                        <td className="py-3 px-4 text-sm text-zinc-300">{task.partType}</td>
+                        <td className="py-3 px-4 text-sm text-zinc-300">{task.partName}</td>
+                        <td className="py-3 px-4 text-sm text-zinc-400">{task.manufacturingProcess}</td>
+                        <td className="py-3 px-4 text-sm text-white font-semibold">{task.quantity}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-3 py-1 rounded-lg text-sm font-bold ${
+                            task.tei >= 85 ? 'bg-green-500/20 text-green-300' :
+                            task.tei >= 70 ? 'bg-yellow-500/20 text-yellow-300' : 'bg-red-500/20 text-red-300'
+                          }`}>
+                            {task.tei}%
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-sm text-zinc-300">{task.operatorName}</td>
+                        <td className="py-3 px-4 text-sm text-zinc-400">{task.date}</td>
+                        <td className="py-3 px-4">
+                          <button
+                            onClick={() => handleDeleteTask(task.id)}
+                            className="p-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-300 rounded-lg transition-all"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-12 text-zinc-400">
+                <Package className="w-16 h-16 mx-auto mb-4 text-zinc-600" />
+                <p className="font-medium">No tasks found</p>
+                <p className="text-sm mt-2 text-zinc-500">
+                  {searchTerm ? 'Try a different search term' : 'Supervisor will add tasks from their dashboard'}
+                </p>
+              </div>
+            )}
+          </motion.div>
+        </main>
+      </div>
     </div>
   );
 }

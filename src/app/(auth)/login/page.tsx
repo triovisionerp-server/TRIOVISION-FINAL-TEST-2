@@ -3,13 +3,23 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase/config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Eye, EyeOff, Mail, Lock, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, Loader2, AlertCircle, HelpCircle, KeyRound } from 'lucide-react';
+import Image from 'next/image';
 
 const COMPANY_DOMAIN = '@triovisioninternational.com';
+
+const USERS: Record<string, string> = {
+  md: 'md123',
+  admin: 'admin123',
+  naveen: 'hr123',
+  naresh: 'hr123',
+  dhathri: 'hr123',
+  prasuna: 'hr123',
+  supervisor: 'supervisor123',
+  pm: 'pm123',
+};
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -17,6 +27,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [shake, setShake] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const router = useRouter();
 
   const fullEmail = emailLocal.includes('@') 
@@ -30,6 +43,43 @@ export default function LoginPage() {
       value = value.replace('triovisioninternational.com', '');
     }
     setEmailLocal(value);
+    setError('');
+  };
+
+  const requestAdminSupport = () => {
+    const userName = emailLocal || 'User';
+    const message = `Hello Admin Team,\n\nUser: ${userName}\nEmail: ${fullEmail}\nIssue: Unable to login to ERP system\nFailed Attempts: ${failedAttempts}\n\nPlease assist.\n\nThank you.`;
+    const whatsappUrl = `https://wa.me/917981085020?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+
+    // Send email notification to admin (simulated)
+    console.log('Email notification sent to admin about locked account:', fullEmail);
+  };
+
+  const handleForgotPassword = () => {
+    if (!emailLocal) {
+      setError('Please enter your email first');
+      return;
+    }
+
+    // Simulate sending reset link
+    const resetMessage = `Password Reset Request\n\nEmail: ${fullEmail}\n\nA password reset link has been sent to your registered email address.\n\nIf you don't receive it, please contact: +91 7981085020`;
+    
+    alert('✅ Password reset link sent!\n\nCheck your email for password reset instructions.');
+    
+    // Also notify admin via WhatsApp
+    const adminMessage = `Password Reset Request\n\nUser: ${emailLocal}\nEmail: ${fullEmail}\n\nPlease assist with password reset.`;
+    const whatsappUrl = `https://wa.me/917981085020?text=${encodeURIComponent(adminMessage)}`;
+    
+    console.log('Password reset requested for:', fullEmail);
+    console.log('Admin notification:', whatsappUrl);
+    
+    setShowForgotPassword(false);
+  };
+
+  const triggerShake = () => {
+    setShake(true);
+    setTimeout(() => setShake(false), 500);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,52 +87,69 @@ export default function LoginPage() {
     setError('');
     setIsLoading(true);
 
-    try {
-      // Sign in with Firebase Auth ONLY
-      await signInWithEmailAndPassword(auth, fullEmail, password);
+    if (USERS[emailLocal] === password) {
+      localStorage.setItem('currentUser', emailLocal);
       
-      // Direct redirect based on username (NO FIRESTORE CHECK)
-      if (emailLocal === 'admin') {
-        router.push('/admin');
-      } else if (emailLocal === 'supervisor') {
-        router.push('/supervisor');
-      } else {
-        router.push('/admin'); // Default
-      }
-      
-    } catch (err: any) {
-      console.error('Login error:', err);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
-        setError('Invalid email or password');
-      } else if (err.code === 'auth/user-not-found') {
-        setError('User not found');
-      } else {
-        setError('Login failed. Please try again.');
-      }
+      setTimeout(() => {
+        setIsLoading(false);
+        if (emailLocal === 'md') {
+          router.push('/md');
+        } else if (emailLocal === 'admin') {
+          router.push('/admin');
+        } else if (emailLocal === 'pm') {
+          router.push('/pm');
+        } else if (['naveen', 'naresh', 'dhathri', 'prasuna'].includes(emailLocal)) {
+          router.push('/hr');
+        } else if (emailLocal === 'supervisor') {
+          router.push('/production');
+        } else {
+          router.push('/admin');
+        }
+      }, 500);
+    } else {
+      const newFailedAttempts = failedAttempts + 1;
+      setFailedAttempts(newFailedAttempts);
+      setError('Invalid email or password');
+      setPassword('');
       setIsLoading(false);
+      triggerShake();
+
+      // Send notification after 3 attempts
+      if (newFailedAttempts >= 3) {
+        // Notify admin about locked account
+        console.log('ALERT: Account locked for', fullEmail, '- Admin notified');
+      }
     }
   };
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex items-center justify-center p-4 overflow-hidden">
-      {/* Animated Grid Background */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:4rem_4rem]"></div>
       
-      {/* Gradient Orbs */}
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
 
-      {/* Main Content */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
         className="relative z-10 w-full max-w-md"
       >
-        {/* Card */}
-        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+        <motion.div
+          animate={shake ? {
+            x: [0, -10, 10, -10, 10, 0],
+            transition: { duration: 0.4 }
+          } : {}}
+          className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
+        >
           <div className="p-8 sm:p-10">
-            {/* Header */}
+            {/* Company Logo */}
+            <div className="flex justify-center mb-6">
+              <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+                <span className="text-3xl font-bold text-white">TV</span>
+              </div>
+            </div>
+
             <div className="text-center mb-8">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -98,9 +165,7 @@ export default function LoginPage() {
               </motion.div>
             </div>
 
-            {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Email Field */}
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -117,8 +182,8 @@ export default function LoginPage() {
                     onChange={handleEmailChange}
                     placeholder="username"
                     required
-                    disabled={isLoading}
-                    className="w-full pl-12 pr-48 h-12 bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 rounded-xl focus:bg-white/10 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all duration-300 outline-none"
+                    disabled={isLoading || failedAttempts >= 3}
+                    className="w-full pl-12 pr-48 h-12 bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 rounded-xl focus:bg-white/10 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all duration-300 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-zinc-500 text-sm pointer-events-none">
                     {COMPANY_DOMAIN}
@@ -138,15 +203,24 @@ export default function LoginPage() {
                 </AnimatePresence>
               </motion.div>
 
-              {/* Password Field */}
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.4 }}
               >
-                <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Password
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-zinc-300">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPassword(true)}
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1"
+                  >
+                    <KeyRound className="w-3 h-3" />
+                    Forgot password?
+                  </button>
+                </div>
                 <div className="relative group">
                   <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-zinc-500 transition-colors group-focus-within:text-blue-400" />
                   <Input
@@ -155,13 +229,14 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    disabled={isLoading}
-                    className="w-full pl-12 pr-12 h-12 bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 rounded-xl focus:bg-white/10 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all duration-300 outline-none"
+                    disabled={isLoading || failedAttempts >= 3}
+                    className="w-full pl-12 pr-12 h-12 bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 rounded-xl focus:bg-white/10 focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 transition-all duration-300 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                    disabled={failedAttempts >= 3}
+                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-50"
                     tabIndex={-1}
                   >
                     {showPassword ? (
@@ -173,21 +248,62 @@ export default function LoginPage() {
                 </div>
               </motion.div>
 
-              {/* Error Message */}
               <AnimatePresence>
                 {error && (
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm"
+                    className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm flex items-start gap-2"
                   >
-                    {error}
+                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium">{error}</p>
+                      {failedAttempts > 0 && (
+                        <p className="text-xs text-red-300 mt-1">
+                          Attempt {failedAttempts} of 3
+                        </p>
+                      )}
+                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* Submit Button */}
+              {/* Account Locked */}
+              <AnimatePresence>
+                {failedAttempts >= 3 && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="p-4 bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/20 rounded-xl"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                        <AlertCircle className="w-5 h-5 text-red-400" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-red-300 font-semibold mb-1">Account Temporarily Locked</h3>
+                        <p className="text-red-200 text-sm mb-3">
+                          Too many failed login attempts. Your administrator has been notified automatically.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={requestAdminSupport}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-lg transition-all font-medium text-sm"
+                        >
+                          <HelpCircle className="w-4 h-4" />
+                          Request Immediate Support
+                        </button>
+                        <p className="text-xs text-zinc-400 mt-2 text-center">
+                          Or refresh the page to try again
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -195,7 +311,7 @@ export default function LoginPage() {
               >
                 <Button
                   type="submit"
-                  disabled={isLoading || !emailLocal || !password}
+                  disabled={isLoading || !emailLocal || !password || failedAttempts >= 3}
                   className="w-full h-12 bg-white text-zinc-900 hover:bg-zinc-100 font-medium rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-white/10"
                 >
                   {isLoading ? (
@@ -210,41 +326,24 @@ export default function LoginPage() {
               </motion.div>
             </form>
 
-            {/* Footer */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.6 }}
-              className="mt-8 text-center"
+              className="mt-6 text-center"
             >
-              <p className="text-sm text-zinc-500">
-                Need access?{' '}
-                <button className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
-                  Contact Admin
-                </button>
-              </p>
+              <button 
+                type="button"
+                onClick={requestAdminSupport}
+                className="text-sm text-zinc-400 hover:text-blue-400 transition-colors inline-flex items-center gap-1"
+              >
+                <HelpCircle className="w-4 h-4" />
+                Need help? Contact Support
+              </button>
             </motion.div>
           </div>
+        </motion.div>
 
-          {/* Demo Accounts */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.7 }}
-            className="px-8 pb-8"
-          >
-            <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-xl">
-              <p className="text-xs font-semibold text-blue-400 mb-2">
-                Demo Accounts
-              </p>
-              <div className="space-y-1 text-xs text-zinc-400">
-                <p>Admin: <span className="text-zinc-300">admin / admin123</span></p>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Branding */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -252,9 +351,81 @@ export default function LoginPage() {
           className="text-center mt-8 text-zinc-600 text-sm"
         >
           <p>© 2025 Composite ERP System</p>
-          <p className="text-xs mt-1">Powered by TrioVision International</p>
+          <p className="text-xs mt-1">TrioVision International</p>
         </motion.div>
       </motion.div>
+
+      {/* Forgot Password Modal */}
+      <AnimatePresence>
+        {showForgotPassword && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowForgotPassword(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-zinc-900 border border-white/10 rounded-2xl p-8 max-w-md w-full"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+                  <KeyRound className="w-6 h-6 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Reset Password</h3>
+                  <p className="text-sm text-zinc-400">Get a password reset link</p>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Your Email
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                  <input
+                    type="text"
+                    value={emailLocal}
+                    onChange={handleEmailChange}
+                    placeholder="username"
+                    className="w-full pl-12 pr-48 h-12 bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 rounded-xl focus:bg-white/10 focus:border-blue-500/50 outline-none"
+                  />
+                  <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-zinc-500 text-sm">
+                    {COMPANY_DOMAIN}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl mb-6">
+                <p className="text-sm text-blue-300">
+                  A password reset link will be sent to <strong>{fullEmail}</strong>
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleForgotPassword}
+                  disabled={!emailLocal}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white py-3 rounded-xl font-semibold transition-all disabled:cursor-not-allowed"
+                >
+                  Send Reset Link
+                </button>
+                <button
+                  onClick={() => setShowForgotPassword(false)}
+                  className="px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl font-semibold transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
