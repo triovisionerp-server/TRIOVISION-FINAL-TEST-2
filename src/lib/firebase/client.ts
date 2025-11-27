@@ -1,28 +1,27 @@
-// src/lib/firebase/client.ts
+// Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore } from "firebase/firestore";
 
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+  apiKey: "AIzaSyDA5LO1585YsSfL55Jb1SXehXs5rPsl7FY",
+  authDomain: "composite-erp-system-162c0.firebaseapp.com",
+  databaseURL: "https://composite-erp-system-162c0-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "composite-erp-system-162c0",
+  storageBucket: "composite-erp-system-162c0.firebasestorage.app",
+  messagingSenderId: "701532946165",
+  appId: "1:701532946165:web:ce1f3d09692e43610ccfbc",
+  measurementId: "G-ZY8SC4BJS7"
 };
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
-
+// Initialize app only once
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
-
-// Critical for some ISPs / localhost / proxies
+// Force long polling - fixes offline/timeout issues
 export const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,
-  // If it still says "offline" later, uncomment this line:
-  // experimentalForceLongPolling: true,
+  experimentalForceLongPolling: true,
 });
+
+export const auth = getAuth(app);
