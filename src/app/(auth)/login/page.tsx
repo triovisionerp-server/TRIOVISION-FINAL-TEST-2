@@ -21,6 +21,19 @@ const USERS: Record<string, string> = {
   pm: 'pm123',
 };
 
+// Role-based dashboard routing map
+// UPDATED: Supervisor goes to /supervisor (Production Floor)
+const ROLE_DASHBOARD_MAP: Record<string, string> = {
+  md: '/md',
+  admin: '/admin',
+  naveen: '/hr',
+  naresh: '/hr',
+  dhathri: '/hr',
+  prasuna: '/hr',
+  supervisor: '/supervisor', // <--- FIXED PATH
+  pm: '/pm',
+};
+
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [emailLocal, setEmailLocal] = useState('');
@@ -52,7 +65,6 @@ export default function LoginPage() {
     const whatsappUrl = `https://wa.me/917981085020?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
 
-    // Send email notification to admin (simulated)
     console.log('Email notification sent to admin about locked account:', fullEmail);
   };
 
@@ -62,12 +74,10 @@ export default function LoginPage() {
       return;
     }
 
-    // Simulate sending reset link
     const resetMessage = `Password Reset Request\n\nEmail: ${fullEmail}\n\nA password reset link has been sent to your registered email address.\n\nIf you don't receive it, please contact: +91 7981085020`;
     
     alert('✅ Password reset link sent!\n\nCheck your email for password reset instructions.');
     
-    // Also notify admin via WhatsApp
     const adminMessage = `Password Reset Request\n\nUser: ${emailLocal}\nEmail: ${fullEmail}\n\nPlease assist with password reset.`;
     const whatsappUrl = `https://wa.me/917981085020?text=${encodeURIComponent(adminMessage)}`;
     
@@ -88,23 +98,13 @@ export default function LoginPage() {
     setIsLoading(true);
 
     if (USERS[emailLocal] === password) {
-      localStorage.setItem('currentUser', emailLocal);
+      localStorage.setItem('currentUser', emailLocal); // Save role directly for compatibility
       
       setTimeout(() => {
         setIsLoading(false);
-        if (emailLocal === 'md') {
-          router.push('/md');
-        } else if (emailLocal === 'admin') {
-          router.push('/admin');
-        } else if (emailLocal === 'pm') {
-          router.push('/pm');
-        } else if (['naveen', 'naresh', 'dhathri', 'prasuna'].includes(emailLocal)) {
-          router.push('/hr');
-        } else if (emailLocal === 'supervisor') {
-          router.push('/production');
-        } else {
-          router.push('/admin');
-        }
+        // Use consistent dashboard routing
+        const dashboardPath = ROLE_DASHBOARD_MAP[emailLocal] || '/admin';
+        router.push(dashboardPath);
       }, 500);
     } else {
       const newFailedAttempts = failedAttempts + 1;
@@ -114,9 +114,7 @@ export default function LoginPage() {
       setIsLoading(false);
       triggerShake();
 
-      // Send notification after 3 attempts
       if (newFailedAttempts >= 3) {
-        // Notify admin about locked account
         console.log('ALERT: Account locked for', fullEmail, '- Admin notified');
       }
     }

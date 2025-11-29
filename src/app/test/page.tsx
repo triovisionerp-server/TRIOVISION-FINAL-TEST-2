@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
-import { db } from "../../../firebase"; // Adjust if firebase.js is not in src/
+import { db } from "@/lib/firebase"; // Adjust if firebase.js is not in src/
 
 export default function DebugJobs() {
   const [jobs, setJobs] = useState([]);
